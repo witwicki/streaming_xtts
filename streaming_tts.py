@@ -1,0 +1,247 @@
+import os
+import re
+import time
+from typing import Any
+from queue import Queue
+from threading import Thread
+import random
+import torch
+import torchaudio
+
+from playsound import playsound
+import pyaudio, wave
+
+import getpass
+
+from TTS.tts.configs.xtts_config import XttsConfig
+from TTS.tts.models.xtts import Xtts
+
+
+import sys; sys.path.append(os.path.dirname(os.path.realpath(__file__)))
+import animate_pylips as face
+
+OUTPUT_DIRECTORY_FOR_WAV_FILES = "./pylips_phrases"
+TTS_CONFIG_PATH = "./xtts_config.json"
+CHECKPOINT_DIRECTORY = f"/home/{getpass.getuser()}/.local/share/tts/tts_models--multilingual--multi-dataset--xtts_v2/"
+
+SPEAKER =  "Nova Hogarth" #"Ferran Simen"  #"Xavier Hayasaka" #"Asya Anara" # "Nova Hogarth" #"Sofia Hellen"
+
+CHUNK_SIZE = 1024
+
+STREAM_CHUNK_SIZE=50
+OVERLAP_WAVE_LEN=2048
+
+TEMPERATURE=0.01
+SPEED=1.0
+
+
+p = pyaudio.PyAudio()
+
+class WrongTypeError(Exception):
+    def __init__(self, argument: str, expected_type: Any, actual_value=None):
+        self.expected_type = expected_type
+        message = f"Expected '{expected_type}' type for argument {argument}"
+        super().__init__(message)
+
+
+class StreamingTTS():
+    def __init__(self):
+        print("\nLoading TTS model...")
+        #os.environ['TORCH_CUDA_ARCH_LIST']
+        config = XttsConfig()
+        config.load_json(TTS_CONFIG_PATH)
+        self._model = Xtts.init_from_config(config)
+        self._model.load_checkpoint(config, checkpoint_dir=CHECKPOINT_DIRECTORY, use_deepspeed=True)
+        self._model.cuda()
+
+        #print("Computing speaker latents...")
+        #t0 = time.time()
+        #self._gpt_cond_latent, self._speaker_embedding = self._model.speaker_manager.speakers[SPEAKER].values()
+        #time_to_compute_lagents = time.time() - t0
+        #print(f"Time to compute speaker latents: {time_to_compute_lagents}")
+        #gpt_cond_latent, speaker_embedding = self._model.get_conditioning_latents(audio_path=["reference.wav"])
+
+        # create output directory
+        os.makedirs(OUTPUT_DIRECTORY_FOR_WAV_FILES, exist_ok=True)
+
+        # attach to robot
+        self._robot = face.Robot()
+
+    def streaming_wav_generation_and_playback(self, text: str, language: str = "en", 
+                                            speaker: str = SPEAKER, speed: str =SPEED, 
+                                            temperature: float = TEMPERATURE):
+
+        # raise errors when called with argument types
+        if not isinstance(language, str):
+            raise WrongTypeError("language", str)
+        if not isinstance(speed, float):
+            raise WrongTypeError("speed", float)
+
+        # random id for the this invocation
+        session_id = random.randrange(1000)
+        self._file_prefix = f"{OUTPUT_DIRECTORY_FOR_WAV_FILES}/tts_{session_id}"
+        self._base_file_prefix = os.path.basename(self._file_prefix)
+        self._text = text
+        self._language = language
+        self._speaker = speaker
+        self._speed = speed
+        self._temperature = temperature
+
+        self._wave = []
+
+        # separate generation/processing and playback threads, with queued playback of generated chunks
+        q = Queue()
+        generation_thread = Thread(target=self._generate_chunks, args=(q,))
+        playback_thread = Thread(target=self._playback_chunks_using_pyaudio, args=(q,))
+        generation_thread.start()
+        playback_thread.start()
+        playback_thread.join()
+        generation_thread.join()
+
+        return f"{self._file_prefix}.wav"
+
+    # producer coroutine
+    def _generate_chunks(self, queue):
+        t0 = time.time()
+        print(f"Loading speaker {self._speaker}...")
+        self._gpt_cond_latent, self._speaker_embedding = self._model.speaker_manager.speakers[self._speaker].values()
+        print("Starting inference...")
+        chunks = self._model.inference_stream(
+            self._text,
+            self._language,
+            self._gpt_cond_latent,
+            self._speaker_embedding,
+            stream_chunk_size=STREAM_CHUNK_SIZE,
+            overlap_wav_len=OVERLAP_WAVE_LEN,
+            temperature=self._temperature,
+            length_penalty=1.0,
+            repetition_penalty=10.0,
+            top_k=50,
+            top_p=0.85,
+            do_sample=True,
+            speed=self._speed,
+        )
+        bundle = []
+        for i, chunk in enumerate(chunks):
+            if i == 0:
+                print(f"Time to first chunck: {time.time() - t0}")
+            print(f"Processing chunk {i}")
+            #print(f"Received chunk {i} of audio length {chunk.shape[-1]}")
+            bundle.append(chunk)
+            data = chunk.squeeze().unsqueeze(0).cpu()
+            filename = f"{self._file_prefix}_{i}.wav"
+            torchaudio.save(filename, data, 24000)
+            wav_data = wave.open(filename,"rb")
+            self._robot.compute_and_store_visemes(filename, language='eng')
+            self._wave.append([wav_data.getparams(),wav_data.readframes(wav_data.getnframes())])
+            #print(f"dimensions: {len(self._wave)}x{len(self._wave[0])}")
+            print(f"Done processing chunk {i}")
+            queue.put(i)
+        wav = torch.cat(bundle, dim=0)
+        torchaudio.save(f"{self._file_prefix}.wav", wav.squeeze().unsqueeze(0).cpu(), 24000)    
+        queue.put(None)
+        #self._playback_waveform_using_pyaudio()        
+
+    def _playback_chunk(self, key):
+        print(f"Playing back chunk {key}")
+        playsound(f"{self._file_prefix}_{key}.wav")
+        print(f"Done playing back chunk {key}")
+
+    def _playback_chunk_using_pyaudio(self, key):
+        print(f"Playing back chunk {key}")
+        f = wave.open(f"{self._file_prefix}_{key}.wav","rb")
+        #open stream  
+        stream = p.open(format = p.get_format_from_width(f.getsampwidth()),  
+                        channels = f.getnchannels(),  
+                        rate = f.getframerate(),  
+                        output = True)  
+        #read data  
+        data = f.readframes(CHUNK_SIZE)
+        while data:  
+            # play stream
+            stream.write(data)  
+            data = f.readframes(CHUNK_SIZE)  
+        #stop stream  
+        stream.stop_stream()  
+        stream.close()
+        print(f"Done playing back chunk {key}")  
+
+    def _playback_waveform_using_pyaudio(self):
+        print(f"Playing back streaming waveform")
+        # create stream
+        params = self._wave[0][0]
+        stream = p.open(format = p.get_format_from_width(params.sampwidth),  
+                channels = params.nchannels,  
+                rate = params.framerate,  
+                output = True)  
+        # play  
+        for i in range(len(self._wave)):
+            data = self._wave[i][1]
+            print("chunk i")
+            #data = f.readframes(CHUNK_SIZE)
+            stream.write(data) 
+            #stop stream  
+        stream.stop_stream()  
+        stream.close()
+        print(f"Done playing back chunks") #{key}")
+
+    # consumer coroutine
+    def _playback_chunks(self, queue):
+        while True:
+            key = queue.get()
+            if key is None:
+                break
+            else:
+                self._playback_chunk_using_pyaudio(key)
+            
+    # consumer coroutine - BEST METHOD FOR JUST VOICE
+    def _playback_chunks_using_pyaudio(self, queue):
+        while True:
+            key = queue.get()
+            if key == 0:
+                # create stream
+                params = self._wave[0][0]
+                stream = p.open(format = p.get_format_from_width(params.sampwidth),  
+                        channels = params.nchannels,  
+                        rate = params.framerate,  
+                        output = True)
+                # play first chunk
+                print(f"->Playing back chunk {key}")
+                self._robot.lip_visemes(f"{self._base_file_prefix}_{key}")
+                stream.write(self._wave[0][1])
+            elif key:
+                # play current chunk
+                data = self._wave[key][1]
+                print(f"->Playing back chunk {key}")
+                self._robot.lip_visemes(f"{self._base_file_prefix}_{key}")
+                stream.write(data)  
+            else: # key is None:
+                # terminate
+                stream.stop_stream()  
+                stream.close()
+                break
+
+"""
+tts = StreamingTTS()
+
+text = input("<PRESS ANY KEY TO CONTINUE>")
+
+text = "N L Navi, at your service. Here's a route that takes us by Marina State Beach, a gem of California's coast \
+    with panaramic views of the Monterey Bay marine sanctuary.  There are three E-V charging stations along the way, \
+    each in close proximity of lunch options.  This route will get you to your destination with more than 50% charge \
+    and is only 12 minutes extra driving time compared to the 2.5 hour fastest route.  How does THAT sound."
+
+# break text into a list of sentences
+sentences = re.split('(?<=[^A-Z].[.?]) +(?=[A-Z])', text)
+
+for sentence in sentences:
+    tts.streaming_wav_generation_and_playback(sentence)
+
+while(True):
+    text = input("Enter a sentence to be spoken: ")
+    tts.streaming_wav_generation_and_playback(text)
+
+p.terminate()
+
+# N-L-Navi, at your service. Here's a route that takes us by Marina State Beach, a gem of California's coast with panoramic views of the Monterey Bay Marine Sanctuary.  There are three E-V charging stations along the way, each in close proximity of lunch options.  This route will get you to your destination with more than 50% charge and is only 12 minutes extra driving time compared to the 2.5-hour fastest route.  How does THAT sound.
+"""
