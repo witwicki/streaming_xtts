@@ -35,8 +35,6 @@ TEMPERATURE=0.01
 SPEED=1.0
 
 
-p = pyaudio.PyAudio()
-
 class WrongTypeError(Exception):
     def __init__(self, argument: str, expected_type: Any, actual_value=None):
         self.expected_type = expected_type
@@ -46,28 +44,23 @@ class WrongTypeError(Exception):
 
 class StreamingTTS():
     def __init__(self):
+        # load TTS model
         print("\nLoading TTS model...")
-        #os.environ['TORCH_CUDA_ARCH_LIST']
         config = XttsConfig()
         config.load_json(TTS_CONFIG_PATH)
         self._model = Xtts.init_from_config(config)
         self._model.load_checkpoint(config, checkpoint_dir=CHECKPOINT_DIRECTORY, use_deepspeed=True)
         self._model.cuda()
 
-        #print("Computing speaker latents...")
-        #t0 = time.time()
-        #self._gpt_cond_latent, self._speaker_embedding = self._model.speaker_manager.speakers[SPEAKER].values()
-        #time_to_compute_lagents = time.time() - t0
-        #print(f"Time to compute speaker latents: {time_to_compute_lagents}")
-        #gpt_cond_latent, speaker_embedding = self._model.get_conditioning_latents(audio_path=["reference.wav"])
-
-        # create output directory
-        os.makedirs(OUTPUT_DIRECTORY_FOR_WAV_FILES, exist_ok=True)
+        # initialize pyaudio
+        print("\nInitializing playback device using pyaudio...")
+        self._pyaudio = pyaudio.PyAudio()
 
         # attach to robot
+        print("\nConnecting to robot face...")
         self._robot = face.Robot()
 
-    def streaming_wav_generation_and_playback(self, text: str, language: str = "en", 
+    def streaming_wav_generation_and_playback(self, text: str, playback: bool = False, language: str = "en", 
                                             speaker: str = SPEAKER, speed: str =SPEED, 
                                             temperature: float = TEMPERATURE):
 
@@ -86,6 +79,7 @@ class StreamingTTS():
         self._speaker = speaker
         self._speed = speed
         self._temperature = temperature
+        self._playback_over_audio_device = playback
 
         self._wave = []
 
@@ -139,82 +133,31 @@ class StreamingTTS():
             queue.put(i)
         wav = torch.cat(bundle, dim=0)
         torchaudio.save(f"{self._file_prefix}.wav", wav.squeeze().unsqueeze(0).cpu(), 24000)    
-        queue.put(None)
-        #self._playback_waveform_using_pyaudio()        
-
-    def _playback_chunk(self, key):
-        print(f"Playing back chunk {key}")
-        playsound(f"{self._file_prefix}_{key}.wav")
-        print(f"Done playing back chunk {key}")
-
-    def _playback_chunk_using_pyaudio(self, key):
-        print(f"Playing back chunk {key}")
-        f = wave.open(f"{self._file_prefix}_{key}.wav","rb")
-        #open stream  
-        stream = p.open(format = p.get_format_from_width(f.getsampwidth()),  
-                        channels = f.getnchannels(),  
-                        rate = f.getframerate(),  
-                        output = True)  
-        #read data  
-        data = f.readframes(CHUNK_SIZE)
-        while data:  
-            # play stream
-            stream.write(data)  
-            data = f.readframes(CHUNK_SIZE)  
-        #stop stream  
-        stream.stop_stream()  
-        stream.close()
-        print(f"Done playing back chunk {key}")  
-
-    def _playback_waveform_using_pyaudio(self):
-        print(f"Playing back streaming waveform")
-        # create stream
-        params = self._wave[0][0]
-        stream = p.open(format = p.get_format_from_width(params.sampwidth),  
-                channels = params.nchannels,  
-                rate = params.framerate,  
-                output = True)  
-        # play  
-        for i in range(len(self._wave)):
-            data = self._wave[i][1]
-            print("chunk i")
-            #data = f.readframes(CHUNK_SIZE)
-            stream.write(data) 
-            #stop stream  
-        stream.stop_stream()  
-        stream.close()
-        print(f"Done playing back chunks") #{key}")
-
-    # consumer coroutine
-    def _playback_chunks(self, queue):
-        while True:
-            key = queue.get()
-            if key is None:
-                break
-            else:
-                self._playback_chunk_using_pyaudio(key)
+        queue.put(None)     
             
-    # consumer coroutine - BEST METHOD FOR JUST VOICE
+    # consumer coroutine
     def _playback_chunks_using_pyaudio(self, queue):
         while True:
             key = queue.get()
             if key == 0:
                 # create stream
                 params = self._wave[0][0]
-                stream = p.open(format = p.get_format_from_width(params.sampwidth),  
+                stream = self._pyaudio.open(format = self._pyaudio.get_format_from_width(params.sampwidth),  
                         channels = params.nchannels,  
                         rate = params.framerate,  
                         output = True)
                 # play first chunk
                 print(f"->Playing back chunk {key}")
                 self._robot.lip_visemes(f"{self._base_file_prefix}_{key}")
-                stream.write(self._wave[0][1])
+                if self._playback_over_audio_device:
+                    stream.write(self._wave[0][1])
             elif key:
                 # play current chunk
                 data = self._wave[key][1]
                 print(f"->Playing back chunk {key}")
                 self._robot.lip_visemes(f"{self._base_file_prefix}_{key}")
-                stream.write(data)  
+                if self._playback_over_audio_device:
+                    stream.write(data)  
             else: # key is None:
                 # terminate
                 stream.stop_stream()  

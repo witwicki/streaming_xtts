@@ -68,13 +68,10 @@ class MyRequestHandler(BaseHTTPRequestHandler):
         content_length = int(self.headers['Content-Length'])
         body = self.rfile.read(content_length)
         content = json.loads(body.decode('utf-8'))
-        # parse 'playback' and 'download' arguments
-        do_playback = False
-        do_download = False
-        if "playback" in content:
-            do_playback = content.pop("playback")
+        # parse 'download' argument
+        download_requested = False
         if "download" in content:
-            do_download = content.pop("download")
+            download_requested = content.pop("download")
         # check for text field
         text = content.get("text", None)
         success = True
@@ -96,7 +93,7 @@ class MyRequestHandler(BaseHTTPRequestHandler):
             success = False
         # send response (with or without wav file)
         if success:
-            if do_download:
+            if download_requested:
                 self.send_wav_file_as_response(return_filename)
             else:
                 self.set_empty_headers()
