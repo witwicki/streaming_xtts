@@ -7,15 +7,12 @@ from threading import Thread
 import random
 import torch
 import torchaudio
-
-from playsound import playsound
 import pyaudio, wave
 
 import getpass
 
 from TTS.tts.configs.xtts_config import XttsConfig
 from TTS.tts.models.xtts import Xtts
-
 
 import sys; sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 import animate_pylips as face

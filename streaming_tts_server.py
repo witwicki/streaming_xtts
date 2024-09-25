@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+
+import argparse
 import json
 import re
 import math
@@ -9,18 +12,13 @@ import socket
 import os, sys; sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 from streaming_tts import StreamingTTS, WrongTypeError
 
-PORT = 8003
-TTS_CHARACTER_LIMIT = 250
+""" This server takes text as input generates speech using Coqui's XTTSv2 model.
+It can operate in one of two, or both, modes: {streaming playback on the host, generation of audio file}.
+Additionally, it interfaces with PyLips for actuating a robot face, if available. 
+"""
 
-''' This server takes text as input and plays back voice on the host machine.  Additionally, it serves up pylips. '''
-
-def print_info_for_all_server_addresses():
-    print("\nServing TTS on all addresses (0.0.0.0)")
-    print(f"* http://localhost:{PORT}")
-    for interface in ni.interfaces():
-        if ni.AF_INET in ni.ifaddresses(interface):
-            print(f"* http://{ni.ifaddresses(interface)[ni.AF_INET][0]['addr']}:{PORT}")
-    print(f"* http://{socket.gethostname()}:{PORT}")
+# The character limit supported by XTTS2
+TTS_CHARACTER_LIMIT = 255
 
 class MyRequestHandler(BaseHTTPRequestHandler):
     def __init__(self, tts_session, *args, **kwargs):
@@ -173,9 +171,23 @@ class MyRequestHandler(BaseHTTPRequestHandler):
         return rebundled_sentences
 
 
+def print_info_for_all_server_addresses(port):
+    print("\nServing TTS on all addresses (0.0.0.0)")
+    print(f"* http://localhost:{port}")
+    for interface in ni.interfaces():
+        if ni.AF_INET in ni.ifaddresses(interface):
+            print(f"* http://{ni.ifaddresses(interface)[ni.AF_INET][0]['addr']}:{port}")
+    print(f"* http://{socket.gethostname()}:{port}")
+
+
 if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser(description="TTS Server.")
+    parser.add_argument('-p', '--port', help="the port to serve on", type=int, default=8003)
+    args = parser.parse_args()
+
     tts_session = StreamingTTS()
     handler = partial(MyRequestHandler, tts_session)
-    httpd = HTTPServer(('0.0.0.0', PORT), handler)
-    print_info_for_all_server_addresses()
+    httpd = HTTPServer(('0.0.0.0', args.port), handler)
+    print_info_for_all_server_addresses(args.port)
     httpd.serve_forever()
