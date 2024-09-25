@@ -25,7 +25,8 @@ Current API:
 parser = argparse.ArgumentParser(description="TTS Client.")
 parser.add_argument('text', help="the text to be spoken")
 parser.add_argument('-p', '--playback', help="(streaming) playback of the audio from the host", action='store_true')
-parser.add_argument('-d', '--download', help="Download the audio file upon completion", action='store_true')
+parser.add_argument('-d', '--download', help="download the audio file upon completion", action='store_true')
+parser.add_argument('--address', help="the address of the server, e.g., 'http://localhost:8003/'", default="http://localhost:8003/")
 parser.add_argument('--split', help="the method of splitting long speeches if any {None, \"sentence\", \"intelligent\"}", default="intelligent")
 parser.add_argument('--language', help="the language of the text to be spoken in iso_code_639_1 format, lower case")
 parser.add_argument('--speaker', help="the name of the xttsv2 speaker whose embeddings to use")
@@ -35,7 +36,7 @@ args = parser.parse_args()
 
 # Check that one of the playback or download flags is set
 if not (args.playback or args.download):
-    parser.error("You must specify at least one of 'playback' or 'download' flags")
+    parser.error("You must specify at least one of {'playback', 'download'} flags")
 
 # Create dictionary of arguments
 arg_list = list(arg for arg in vars(args))
@@ -44,10 +45,10 @@ for arg in arg_list:
     if getattr(args, arg):
         arg_dict[arg] = getattr(args, arg)
 
-# Convert to json string for HTTP POST
-#text = args.text
-#data = f'{{"text": "{text}", "split": "intelligent", "speed": 1.0}}'
-#print(f"request: {data}\n")
+# Pop the server address out of the dictionary, as this need not be passed further
+server_address = arg_dict.pop('address')
+
+# Convert dictionary to json string for HTTP POST
 data = json.dumps(arg_dict)
 print(f"request: {data}\n")
 
@@ -55,7 +56,7 @@ print(f"request: {data}\n")
 headers = {
     'Content-Type': 'application/x-www-form-urlencoded',
 }
-response = requests.post('http://localhost:8003', headers=headers, data=data)
+response = requests.post(server_address, headers=headers, data=data)
 print(f"raw response: {response}")
 print(f"headers: {response.headers}")
 

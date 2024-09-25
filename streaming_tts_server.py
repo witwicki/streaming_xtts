@@ -4,6 +4,7 @@ import math
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from functools import partial
 import netifaces as ni
+import socket
 #from stream2sentence import generate_sentences
 import os, sys; sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 from streaming_tts import StreamingTTS, WrongTypeError
@@ -19,7 +20,7 @@ def print_info_for_all_server_addresses():
     for interface in ni.interfaces():
         if ni.AF_INET in ni.ifaddresses(interface):
             print(f"* http://{ni.ifaddresses(interface)[ni.AF_INET][0]['addr']}:{PORT}")
-
+    print(f"* http://{socket.gethostname()}:{PORT}")
 
 class MyRequestHandler(BaseHTTPRequestHandler):
     def __init__(self, tts_session, *args, **kwargs):
