@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import re
 from datetime import datetime
 import requests # pip install requests
 import argparse
@@ -60,7 +61,9 @@ print(f"headers: {response.headers}")
 
 # If not successful, print error message
 if response.status_code == 400:
-    print(f"content: {response.content}")
+    # decode bytestring and remove HTML tags
+    error_string = re.sub('<[^<]+?>', '', response.content.decode('utf8'))
+    print(error_string)
 # If successful, parse response
 elif response.status_code == 200:
     # html response

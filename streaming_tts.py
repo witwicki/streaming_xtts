@@ -41,6 +41,11 @@ class WrongTypeError(Exception):
         message = f"Expected '{expected_type}' type for argument {argument}"
         super().__init__(message)
 
+class SpeakerNotFoundError(Exception):
+    def __init__(self, speaker: str):
+        message = f"Speaker name '{speaker}' is invalid."
+        super().__init__(message)
+
 
 class StreamingTTS():
     def __init__(self):
@@ -81,6 +86,18 @@ class StreamingTTS():
         self._temperature = temperature
         self._playback_over_audio_device = playback
 
+        # catch language error (based on XTTSv2 supported languages)
+        if not self._language in {"ar", "cs", "de", "en", "es", "fr", "hu", "it", "nl", "pl", "pt", "ru", "tr", "zh", "ko"}:
+            raise Exception(f"'{self._language}' is not a supported language.")
+
+        # load speaker embedding    
+        print(f"Loading speaker {self._speaker}...")
+        try:
+            self._gpt_cond_latent, self._speaker_embedding = self._model.speaker_manager.speakers[self._speaker].values()
+        except KeyError:
+            raise SpeakerNotFoundError(self._speaker)
+
+        # data structure to hold waveform as it is being generated
         self._wave = []
 
         # separate generation/processing and playback threads, with queued playback of generated chunks
@@ -97,8 +114,7 @@ class StreamingTTS():
     # producer coroutine
     def _generate_chunks(self, queue):
         t0 = time.time()
-        print(f"Loading speaker {self._speaker}...")
-        self._gpt_cond_latent, self._speaker_embedding = self._model.speaker_manager.speakers[self._speaker].values()
+
         print("Starting inference...")
         chunks = self._model.inference_stream(
             self._text,

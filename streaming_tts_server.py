@@ -35,7 +35,7 @@ class MyRequestHandler(BaseHTTPRequestHandler):
         self.send_response(400)
         self.send_header("Content-type", "text/html")
         self.end_headers()
-        self.wfile.write(bytes(f"<html<body><h1>Bad Request: {error}</h1></body></html>", "utf-8"))
+        self.wfile.write(bytes(f"<html><body><h1>Bad Request: {error}</h1></body></html>", "utf-8"))
 
     def send_wav_file_as_response(self, wav_filename):
         self.send_response(200)
@@ -86,7 +86,7 @@ class MyRequestHandler(BaseHTTPRequestHandler):
                 error_string = f"WrongTypeError: {e}"
                 success = False
             except Exception as e:
-                error_string = f"Exception: {e}"
+                error_string = f"{e}"
                 success = False
         else:
             error_string = "No text field in request"
