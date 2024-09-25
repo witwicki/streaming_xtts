@@ -7,6 +7,7 @@ from functools import partial
 import os, sys; sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 from streaming_tts import StreamingTTS, WrongTypeError
 
+PORT = 8003
 TTS_CHARACTER_LIMIT = 250
 
 ''' This server takes text as input and plays back voice on the host machine.  Additionally, it serves up pylips. '''
@@ -168,5 +169,5 @@ class MyRequestHandler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     tts_session = StreamingTTS()
     handler = partial(MyRequestHandler, tts_session)
-    httpd = HTTPServer(('0.0.0.0', 8003), handler)
+    httpd = HTTPServer(('0.0.0.0', PORT), handler)
     httpd.serve_forever()
