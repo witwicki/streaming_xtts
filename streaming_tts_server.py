@@ -3,6 +3,7 @@ import re
 import math
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from functools import partial
+import netifaces as ni
 #from stream2sentence import generate_sentences
 import os, sys; sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 from streaming_tts import StreamingTTS, WrongTypeError
@@ -11,6 +12,14 @@ PORT = 8003
 TTS_CHARACTER_LIMIT = 250
 
 ''' This server takes text as input and plays back voice on the host machine.  Additionally, it serves up pylips. '''
+
+def print_info_for_all_server_addresses():
+    print("\nServing TTS on all addresses (0.0.0.0)")
+    print(f"* http://localhost:{PORT}")
+    for interface in ni.interfaces():
+        if ni.AF_INET in ni.ifaddresses(interface):
+            print(f"* http://{ni.ifaddresses(interface)[ni.AF_INET][0]['addr']}:{PORT}")
+
 
 class MyRequestHandler(BaseHTTPRequestHandler):
     def __init__(self, tts_session, *args, **kwargs):
@@ -170,4 +179,5 @@ if __name__ == "__main__":
     tts_session = StreamingTTS()
     handler = partial(MyRequestHandler, tts_session)
     httpd = HTTPServer(('0.0.0.0', PORT), handler)
+    print_info_for_all_server_addresses()
     httpd.serve_forever()
