@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 
 import argparse
+import os
 import json
 import re
 import math
+import wave
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from functools import partial
 import netifaces as ni
@@ -17,8 +19,9 @@ It can operate in one of two, or both, modes: {streaming playback on the host, g
 Additionally, it interfaces with PyLips for actuating a robot face, if available. 
 """
 
-# The character limit supported by XTTS2
-TTS_CHARACTER_LIMIT = 255
+# Constants
+TTS_CHARACTER_LIMIT = 255 # the per-call character limit supported by XTTS2
+SILENCE_DURATION_BETWEEN_CONSECTIVE_SPEECHES = 0.5 # seconds of silence between consecutive calls
 
 class MyRequestHandler(BaseHTTPRequestHandler):
     def __init__(self, tts_session, *args, **kwargs):
@@ -94,7 +97,12 @@ class MyRequestHandler(BaseHTTPRequestHandler):
         # parse 'download' argument
         download_requested = False
         if "download" in content:
-            download_requested = content.pop("download")
+            # remove from dictionary so that it is not passed to the TTS engine
+            download_requested = content.pop("download") 
+        # parse 'speed argument
+        self._speed_of_speech = 1.0
+        if "speed" in content:
+            self._speed_of_speech = content["speed"]
         # check for text field
         text = content.get("text", None)
         success = True
@@ -137,12 +145,15 @@ class MyRequestHandler(BaseHTTPRequestHandler):
             # TODO: compare performance with generate_sentences(content["text"]):
             if split_into_sentences == "intelligent":
                 sentences = self._rebundle_sentences_intelligently_ahdhering_to_TTS_limits(sentences)
+        # pass each sentence bundle (could be multiple sentenceS) into to the TTS engine
+        wav_file_paths = []
         for sentence in sentences:
             print(f"TTS saying: {sentence}")
             kwargs["text"] = sentence
             wav_filename = self._tts_session.streaming_wav_generation_and_playback(**kwargs)
-            return wav_filename
-        # TODO combine waveforms
+            wav_file_paths.append(wav_filename)
+        # concatentate wav files and return
+        return self._concatenate_wav_files(wav_file_paths)
 
         
     def _rebundle_sentences_intelligently_ahdhering_to_TTS_limits(self, sentences):
@@ -193,6 +204,52 @@ class MyRequestHandler(BaseHTTPRequestHandler):
             rebundled_sentences.append(current_bundle)
 
         return rebundled_sentences
+
+    def _concatenate_wav_files(self, audio_clip_paths) -> str:
+        """Concatenate several audio files and save into one audio file,
+        returning the name of that file.
+        
+        Parameters
+        ----------
+        audio_clip_paths : list of str
+
+        Returns
+        -------
+        str : the name of the concatenated audio file
+        """
+        # edge case: no audio path
+        if not audio_clip_paths:
+            return None
+        # edge case: only one audio path
+        elif len(audio_clip_paths) == 1:
+            return audio_clip_paths[0]
+
+        # create a joined file
+        data = []
+        # combine the file names by starting with the tts_ prefix, then apending ids
+        output_file_path = f"{os.path.dirname(audio_clip_paths[0])}/tts"
+        for filename in audio_clip_paths:
+            # read wave file
+            w = wave.open(filename, "rb")
+            wave_params = w.getparams()
+            # parse ID from input file and append to name of output file
+            output_file_path += re.search('(_[0-9_]+)\.wav', filename).group(1)
+            # append silence
+            num_silence_frames = int((SILENCE_DURATION_BETWEEN_CONSECTIVE_SPEECHES
+                                      / self._speed_of_speech) * wave_params.framerate)
+            silence_data = bytes(0 for i in range(num_silence_frames * wave_params.sampwidth))
+            data.append([wave_params, silence_data])
+            # append the audio data
+            data.append([wave_params, w.readframes(w.getnframes())])
+            w.close()
+        output_file_path += ".wav"
+        # write output file and return filename
+        output = wave.open(output_file_path, "wb")
+        output.setparams(data[0][0])
+        for i in range(len(data)):
+            output.writeframes(data[i][1])
+        output.close()
+        return output_file_path
 
 
 def print_info_for_all_server_addresses(port):
