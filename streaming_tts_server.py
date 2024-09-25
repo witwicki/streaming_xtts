@@ -26,22 +26,46 @@ class MyRequestHandler(BaseHTTPRequestHandler):
         super().__init__(*args, **kwargs)
 
     def set_empty_headers(self):
-        self.send_response(200)
-        self.send_header("Content-type", "text/html")
-        self.end_headers()    
+        """Set and respond with an empty headers (e.g., for a successul POST request that does not return audio)."""
+        try:
+            self.send_response(200)
+            self.send_header("Content-type", "text/html")
+            self.end_headers()
+        except Exception as e:
+            print(f"Exception raised in HTTP response: {e}")    
 
-    def send_error_response(self, error):
-        self.send_response(400)
-        self.send_header("Content-type", "text/html")
-        self.end_headers()
-        self.wfile.write(bytes(f"<html><body><h1>Bad Request: {error}</h1></body></html>", "utf-8"))
+    def send_error_response(self, error: str):
+        """Respond with error (400).
+
+        Parameters
+        ----------
+        error : str
+            The error message to send in the response body.
+        """
+        try:
+            self.send_response(400)
+            self.send_header("Content-type", "text/html")
+            self.end_headers()
+            self.wfile.write(bytes(f"<html><body><h1>Bad Request: {error}</h1></body></html>", "utf-8"))
+        except Exception as e:
+            print(f"Exception raised in HTTP response: {e}")
 
     def send_wav_file_as_response(self, wav_filename):
-        self.send_response(200)
-        self.send_header("Content-type", "audio/wav")
-        self.end_headers()
-        with open(wav_filename, "rb") as wav_file:
-            self.wfile.write(wav_file.read())
+        """Send response 200 (success) with as a WAV file.
+
+        Parameters
+        ----------
+        wav_filename : str
+            The filename of the WAV file to send in response body.
+        """
+        try:
+            self.send_response(200)
+            self.send_header("Content-type", "audio/wav")
+            self.end_headers()
+            with open(wav_filename, "rb") as wav_file:
+                self.wfile.write(wav_file.read())
+        except Exception as e:
+            print(f"Exception raised in HTTP response: {e}")
 
     def do_HEAD(self):
         self.set_empty_headers()
