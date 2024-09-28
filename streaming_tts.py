@@ -17,7 +17,7 @@ from TTS.tts.models.xtts import Xtts
 import sys; sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 import animate_pylips as face
 
-OUTPUT_DIRECTORY_FOR_WAV_FILES = "./pylips_phrases"
+DATA_DIRECTORY_FOR_GENERATED_FILES = "./pylips_phrases"
 TTS_CONFIG_PATH = "./xtts_config.json"
 CHECKPOINT_DIRECTORY = f"/home/{getpass.getuser()}/.local/share/tts/tts_models--multilingual--multi-dataset--xtts_v2/"
 
@@ -54,6 +54,9 @@ class StreamingTTS():
         self._model.load_checkpoint(config, checkpoint_dir=CHECKPOINT_DIRECTORY, use_deepspeed=deepspeed_acceleration)
         self._model.cuda()
 
+        # create data directory (for wav files and visemes) if it doesn't exist
+        os.makedirs(DATA_DIRECTORY_FOR_GENERATED_FILES, exist_ok = True)
+
         # initialize pyaudio
         print("\nInitializing playback device using pyaudio...")
         self._pyaudio = pyaudio.PyAudio()
@@ -74,7 +77,7 @@ class StreamingTTS():
 
         # random id for the this invocation
         session_id = random.randrange(1000)
-        self._file_prefix = f"{OUTPUT_DIRECTORY_FOR_WAV_FILES}/tts_{session_id}"
+        self._file_prefix = f"{DATA_DIRECTORY_FOR_GENERATED_FILES}/tts_{session_id}"
         self._base_file_prefix = os.path.basename(self._file_prefix)
         self._text = text
         self._language = language
