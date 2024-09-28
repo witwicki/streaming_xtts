@@ -45,13 +45,13 @@ class SpeakerNotFoundError(Exception):
 
 
 class StreamingTTS():
-    def __init__(self):
+    def __init__(self, deepspeed_acceleration=False):
         # load TTS model
         print("\nLoading TTS model...")
         config = XttsConfig()
         config.load_json(TTS_CONFIG_PATH)
         self._model = Xtts.init_from_config(config)
-        self._model.load_checkpoint(config, checkpoint_dir=CHECKPOINT_DIRECTORY, use_deepspeed=True)
+        self._model.load_checkpoint(config, checkpoint_dir=CHECKPOINT_DIRECTORY, use_deepspeed=deepspeed_acceleration)
         self._model.cuda()
 
         # initialize pyaudio
