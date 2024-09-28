@@ -1,13 +1,6 @@
 #!/usr/bin/env python
 
-import re
-from datetime import datetime
-import requests # pip install requests
-import argparse
-import json
-
-"""
-Test Client for TTS server.
+"""Test Client for TTS server.
 
 Current API:
 - text (string) : the text to be spoken
@@ -17,9 +10,14 @@ Current API:
 - language (string) = "en" : the language of the text to be spoken in iso_code_639_1 format, lower case
 - speaker (string) = "Nova Hogarth" : the name of the xttsv2 speaker whose embeddings to use
 - speed (float) = 1.0 : the speed of the speech (independent of tone and emotion), where 2.0 is twice as fast
-- temperature = 0.01 : the temperature of the speech, where 0 is coldest
-
+- temperature (float) = 0.01 : the temperature of the speech, where 0 is coldest
 """
+
+import re
+from datetime import datetime
+import requests # pip install requests
+import argparse
+import json
 
 # Parse Arguments
 parser = argparse.ArgumentParser(description="TTS Client.")

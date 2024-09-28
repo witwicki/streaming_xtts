@@ -1,5 +1,31 @@
 #!/usr/bin/env python
 
+__author__ = "Stefan Witwicki"
+__copyright__ = "Copyright (C) 2024 Stefan Witwicki"
+__license__ = "GNU General Public License version 2"
+__version__ = "0.1"
+
+"""STREAMING TTS SERVER
+
+This server takes text as input generates speech using Coqui's XTTSv2 model.
+It can operate in one of two, or both, modes: {streaming playback on the host, generation of audio file}.
+Additionally, it interfaces with PyLips for actuating a robot face, if available. 
+
+To run:
+  python streaming_tts_server.py --help
+"""
+
+"""License information:
+
+    This file is part of the streaming_xtts package.
+    streaming_xtts is free software: you can redistribute it and/or modify it under the terms of the 
+    GNU General Public License as published by the Free Software Foundation, version 2. 
+    streaming_xtts is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even 
+    the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public 
+    License for more details. You should have received a copy of the GNU General Public License along with 
+    streamging_xtts. If not, see <https://www.gnu.org/licenses/>. 
+"""
+
 import argparse
 import os
 import json
@@ -14,17 +40,24 @@ import socket
 import os, sys; sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 from streaming_tts import StreamingTTS, WrongTypeError
 
-""" This server takes text as input generates speech using Coqui's XTTSv2 model.
-It can operate in one of two, or both, modes: {streaming playback on the host, generation of audio file}.
-Additionally, it interfaces with PyLips for actuating a robot face, if available. 
-"""
-
 # Constants
 TTS_CHARACTER_LIMIT = 255 # the per-call character limit supported by XTTS2
 SILENCE_DURATION_BETWEEN_CONSECTIVE_SPEECHES = 0.5 # seconds of silence between consecutive calls
 
 class MyRequestHandler(BaseHTTPRequestHandler):
-    def __init__(self, tts_session, *args, **kwargs):
+    """Request handling for the server.
+
+    The intended functionality is to handle TTS directives by POST request and (optionally) to return
+    the audio file as a response.  
+    """
+    
+    def __init__(self, tts_session: StreamingTTS, *args, **kwargs):
+        """
+        Parameters
+        ----------
+        tts_session : StreamingTTS
+            The StreamingTTS object to use for TTS generation.
+        """
         self._tts_session = tts_session
         super().__init__(*args, **kwargs)
 
@@ -53,7 +86,7 @@ class MyRequestHandler(BaseHTTPRequestHandler):
         except Exception as e:
             print(f"Exception raised in HTTP response: {e}")
 
-    def send_wav_file_as_response(self, wav_filename):
+    def send_wav_file_as_response(self, wav_filename: str):
         """Send response 200 (success) with as a WAV file.
 
         Parameters
@@ -71,15 +104,16 @@ class MyRequestHandler(BaseHTTPRequestHandler):
             print(f"Exception raised in HTTP response: {e}")
 
     def do_HEAD(self):
+        """Empty HEAD request (for compatibility)."""
         self.set_empty_headers()
 
     def do_GET(self):
+        """Empty GET request (for compatibility)."""
         self.set_empty_headers()
-
     
     def do_POST(self):
-        """
-        TTS audio playback (streaming) and wave-file retrieval (delivery only after playback).
+        """POST reqeust for TTS audio playback (streaming) and wave-file retrieval 
+        (delivered only after playback).
 
         Content is expected as a utf-8 encoded JSON string, with the following fields:
         - text (string) : the text to be spoken
@@ -90,6 +124,8 @@ class MyRequestHandler(BaseHTTPRequestHandler):
         - speaker (string) = "Nova Hogarth" : the name of the xttsv2 speaker whose embeddings to use
         - speed (float) = 1.0 : the speed of the speech (independent of tone and emotion), where 2.0 is twice as fast
         - temperature = 0.01 : the temperature of the speech, where 0 is coldest
+
+        In turn, the JSON string gets converted to a dict and passed as arguments to the TTS engine.
         """
         content_length = int(self.headers['Content-Length'])
         body = self.rfile.read(content_length)
@@ -108,9 +144,8 @@ class MyRequestHandler(BaseHTTPRequestHandler):
         success = True
         error_string = None
         return_filename = ""
-        bool
-        # invoke tts engine 
         if text:
+            # invoke tts engine, recording exceptions that it raised for communication in the response  
             try:
                 return_filename = self._speek_and_return_wav(**content)
             except WrongTypeError as e:
@@ -132,14 +167,33 @@ class MyRequestHandler(BaseHTTPRequestHandler):
             print(error_string)
             self.send_error_response(error_string)
 
-    def _speek_and_return_wav(self, **kwargs):
+    def _speek_and_return_wav(self, **kwargs) -> str:
+        """Invoke the TTS engine and return the filename of the generated wav file.
+        
+        Importantly, this function also takes care of splitting the text (depending on the 'split' argument)
+        into sentences or sentence-bundles in order not to exceed the maximum character limit of the TTS engine.
+
+        Parameters
+        ----------
+        **kwargs
+            Arbitrary keyword arguments that can include parameters taken by 
+            StreamingTTS.streaming_wav_generation_and_playback(), as well as
+            'split', a string indicating the mode for splitting sentences for 
+            consecutive invokations of the TTS engine.
+
+        Returns
+        -------
+        str
+            The filename of the generated wav file.
+        """
         text = kwargs.get("text")
         sentences = [ text ]
         split_into_sentences = None
         if "split" in kwargs:
+            # remove from dictionary so that it is not passed to the TTS engine
             split_into_sentences = kwargs.pop("split")
         if split_into_sentences:
-            # regex for splitting sentences
+            # regex for splitting sentences (with special character 。 to support Japanese)
             sentence_splitter_j = r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?|\!|。)\s+'
             sentences = re.split(sentence_splitter_j, text.replace('。','。 '))
             # TODO: compare performance with generate_sentences(content["text"]):
@@ -148,25 +202,40 @@ class MyRequestHandler(BaseHTTPRequestHandler):
         # pass each sentence bundle (could be multiple sentenceS) into to the TTS engine
         wav_file_paths = []
         for sentence in sentences:
-            print(f"TTS saying: {sentence}")
+            print(f"Generating speech for text \"{sentence}\"...")
             kwargs["text"] = sentence
             wav_filename = self._tts_session.streaming_wav_generation_and_playback(**kwargs)
             wav_file_paths.append(wav_filename)
         # concatentate wav files and return
         return self._concatenate_wav_files(wav_file_paths)
 
-        
-    def _rebundle_sentences_intelligently_ahdhering_to_TTS_limits(self, sentences):
+    def _rebundle_sentences_intelligently_ahdhering_to_TTS_limits(self, sentences : list[str]) -> list[str]:
+        """ Rebundle sentences intelligently to avoid exceeding TTS limits.
+
+        The basic idea is to split on sentence boundaries and to balance the number of characters
+        per bundle subject to the character limit.
+
+        Edge case not currently handled: a single sentence that exceeds the character limit is simply passed
+        running the risk of truncation in the speech mid-sentence for the corresponding TTS call.
+
+        Parameters
+        ----------
+        sentences : list of str
+            list of sentences to be rebundled
+
+        Returns
+        -------
+        List of strings, each corresponding to a sentence bundle designed as the input to a TTS call
+        """
         # calculate lengths of sentences
         sentence_lengths = [ len(s) for s in sentences ]
         total_length = sum(sentence_lengths)
-        print(f"sentence_lengths={sentence_lengths}")
+
         # calculate factor by which we have exceeded the TTS limit, and from that derive a target text lengh
         excess_factor_float = total_length / TTS_CHARACTER_LIMIT
         excess_factor_int = math.ceil(excess_factor_float)
         target_length = total_length / excess_factor_int
-        print(f"excess_factor_float ={excess_factor_float}, excess_factor_int={excess_factor_int}, target_lenth={target_length}")
-        
+          
         # bundle sentences into texts of length >= target_length and <= TTS_CHARACTER_LIMIT
         rebundled_sentences = []
         current_bundle = ""
@@ -191,6 +260,8 @@ class MyRequestHandler(BaseHTTPRequestHandler):
             # catch condition where the sentence itself exceeds the limit (to avoid infinite while loop)
             if running_length == 0 and bundle_is_full:
                 print(f"WARNING: sentence exceeds {TTS_CHARACTER_LIMIT}-character limit: \"{sentence}\"")
+                #TODO handle this condition more gracefully by imposing a split mid-sentence that is ideally
+                # alligned with a comma ',' or dash '—' or semicolon
                 current_bundle += f" {sentence}"
                 running_length = running_length_with_sentence
                 sentence_index += 1
@@ -205,7 +276,7 @@ class MyRequestHandler(BaseHTTPRequestHandler):
 
         return rebundled_sentences
 
-    def _concatenate_wav_files(self, audio_clip_paths) -> str:
+    def _concatenate_wav_files(self, audio_clip_paths: list[str]) -> str:
         """Concatenate several audio files and save into one audio file,
         returning the name of that file.
         
@@ -252,7 +323,14 @@ class MyRequestHandler(BaseHTTPRequestHandler):
         return output_file_path
 
 
-def print_info_for_all_server_addresses(port):
+def print_info_for_all_server_addresses(port: int):
+    """ Print to the terminal all reachable addresses of this server.
+
+    Parameters
+    ----------
+    port : int
+        The port we are serving on.
+    """
     print("\nServing TTS on all addresses (0.0.0.0)")
     print(f"* http://localhost:{port}")
     for interface in ni.interfaces():
@@ -262,14 +340,15 @@ def print_info_for_all_server_addresses(port):
 
 
 if __name__ == "__main__":
-
+    # parse port
     parser = argparse.ArgumentParser(description="TTS Server.")
     parser.add_argument('-p', '--port', help="(optional argument) the port to serve on (default: 8003)", type=int, default=8003)
     parser.add_argument('--deepspeed', help="(optional flag) use deepspeed package for accelerated inference", action='store_true')
     parser.add_argument('--pylips', help="(optional flag) generate visemes, and animate robot face if Pylips server is running", action='store_true')
     args = parser.parse_args()
-
+    # instantiate and initialize streaming TTS object
     tts_session = StreamingTTS(deepspeed_acceleration=args.deepspeed, actuate_pylips=args.pylips)
+    # serve
     handler = partial(MyRequestHandler, tts_session)
     httpd = HTTPServer(('0.0.0.0', args.port), handler)
     print_info_for_all_server_addresses(args.port)
