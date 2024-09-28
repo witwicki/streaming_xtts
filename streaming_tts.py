@@ -15,7 +15,6 @@ from TTS.tts.configs.xtts_config import XttsConfig
 from TTS.tts.models.xtts import Xtts
 
 import sys; sys.path.append(os.path.dirname(os.path.realpath(__file__)))
-import animate_pylips as face
 
 DATA_DIRECTORY_FOR_GENERATED_FILES = "./pylips_phrases"
 TTS_CONFIG_PATH = "./xtts_config.json"
@@ -45,7 +44,7 @@ class SpeakerNotFoundError(Exception):
 
 
 class StreamingTTS():
-    def __init__(self, deepspeed_acceleration=False):
+    def __init__(self, deepspeed_acceleration=False, actuate_pylips=False):
         # load TTS model
         print("\nLoading TTS model...")
         config = XttsConfig()
@@ -62,8 +61,11 @@ class StreamingTTS():
         self._pyaudio = pyaudio.PyAudio()
 
         # attach to robot
-        print("\nConnecting to robot face...")
-        self._robot = face.Robot()
+        self._actuate_pylips = actuate_pylips
+        if self._actuate_pylips:
+            print("\nConnecting to robot face...")
+            import animate_pylips as face
+            self._robot = face.Robot()
 
     def streaming_wav_generation_and_playback(self, text: str, playback: bool = False, language: str = "en", 
                                             speaker: str = SPEAKER, speed: str =SPEED, 
@@ -142,9 +144,9 @@ class StreamingTTS():
             filename = f"{self._file_prefix}_{i}.wav"
             torchaudio.save(filename, data, 24000)
             wav_data = wave.open(filename,"rb")
-            self._robot.compute_and_store_visemes(filename, language='eng')
+            if self._actuate_pylips:
+                self._robot.compute_and_store_visemes(filename, language='eng')
             self._wave.append([wav_data.getparams(),wav_data.readframes(wav_data.getnframes())])
-            #print(f"dimensions: {len(self._wave)}x{len(self._wave[0])}")
             print(f"Done processing chunk {i}")
             queue.put(i)
         wav = torch.cat(bundle, dim=0)
@@ -163,16 +165,18 @@ class StreamingTTS():
                         rate = params.framerate,  
                         output = True)
                 # play first chunk
-                print(f"->Playing back chunk {key}")
-                self._robot.lip_visemes(f"{self._base_file_prefix}_{key}")
+                if self._actuate_pylips:
+                    self._robot.lip_visemes(f"{self._base_file_prefix}_{key}")
                 if self._playback_over_audio_device:
+                    print(f"->Playing back chunk {key}")
                     stream.write(self._wave[0][1])
             elif key:
                 # play current chunk
                 data = self._wave[key][1]
-                print(f"->Playing back chunk {key}")
-                self._robot.lip_visemes(f"{self._base_file_prefix}_{key}")
+                if self._actuate_pylips:
+                    self._robot.lip_visemes(f"{self._base_file_prefix}_{key}")
                 if self._playback_over_audio_device:
+                    print(f"->Playing back chunk {key}")
                     stream.write(data)  
             else: # key is None:
                 # terminate

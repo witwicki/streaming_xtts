@@ -264,11 +264,12 @@ def print_info_for_all_server_addresses(port):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="TTS Server.")
-    parser.add_argument('-p', '--port', help="the port to serve on (default: 8003)", type=int, default=8003)
-    parser.add_argument('-d', '--deepspeed', help="use deepspeed package for accelerated inference (this flag defaults to off)", action='store_true')
+    parser.add_argument('-p', '--port', help="(optional argument) the port to serve on (default: 8003)", type=int, default=8003)
+    parser.add_argument('--deepspeed', help="(optional flag) use deepspeed package for accelerated inference", action='store_true')
+    parser.add_argument('--pylips', help="(optional flag) generate visemes, and animate robot face if Pylips server is running", action='store_true')
     args = parser.parse_args()
 
-    tts_session = StreamingTTS(deepspeed_acceleration=args.deepspeed)
+    tts_session = StreamingTTS(deepspeed_acceleration=args.deepspeed, actuate_pylips=args.pylips)
     handler = partial(MyRequestHandler, tts_session)
     httpd = HTTPServer(('0.0.0.0', args.port), handler)
     print_info_for_all_server_addresses(args.port)
