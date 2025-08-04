@@ -24,6 +24,8 @@ The API also supports many of the original xtts knobs, e.g., *speaker*, *tempera
 The lip-syncing feature additionally requires:
 - [PyLips](https://github.com/witwicki/PyLips) (forked from original development by students at USC Interaction Lab)
 
+For NVIDIA GPUs, `deepspeed` (python package) is strongly encouraged for reducing the time to first chunk during inference.
+
 ## Quick start
 
 On the server side (where inference is perfomed and audio optionally plays):
@@ -44,7 +46,27 @@ uv run streaming-tts-client -pd "Check your project directory for a wave file wi
 
 For both the server and client script above, use **--help** to see the available optons.
 
+## Deepspeed (faster inference for cuda)
+
+If you have an NVIDIA GPU, install the optional dependency:
+```shell scipt
+uv sync --extra deepspeed
+```
+
+Then run the server with flag:
+```shell script
+uv run streaming-xtts --deepspeed
+```
+
 ## Actuating the robot face
+
+### Prerequisite
+
+Add the optional dependency:
+```shell script
+uv sync --extra pylips
+```
+_Warning: If you want the deepspeed extra as well, include both in the uv sync command (as otherwise you will only get one or the other)._
 
 ### Locally
 

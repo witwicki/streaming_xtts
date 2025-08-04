@@ -23,6 +23,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+deepspeed = [
+    "deepspeed",
+]
 pylips = [
     "allosaurus",
     "pylips",
