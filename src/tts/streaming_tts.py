@@ -138,9 +138,20 @@ class StreamingTTS():
         print("\nLoading TTS model...")
         config = XttsConfig()
         config.load_json(TTS_CONFIG_PATH)
+
         self._model = Xtts.init_from_config(config)
-        self._model.load_checkpoint(config, checkpoint_dir=CHECKPOINT_DIRECTORY, use_deepspeed=deepspeed_acceleration)
-        self._model.cuda()
+        self._model.load_checkpoint(config, checkpoint_dir=checkpoint_path, use_deepspeed=deepspeed_acceleration)
+
+        # optimize for detected computing architecture
+        if torch.cuda.is_available():
+            print("...using NVIDIA CUDA for inference.")
+            self._model.to("cuda")
+        elif torch.backends.mps.is_available():
+            print("...using MPS for inference.")
+            torch.set_default_device('mps')
+            self._model.to("mps")
+        else:
+            print("...using CPU for inference.")
 
         # create data directory (for wav files and visemes) if it doesn't exist
         os.makedirs(DATA_DIRECTORY_FOR_GENERATED_FILES, exist_ok = True)
@@ -279,7 +290,7 @@ class StreamingTTS():
             bundle.append(chunk)
             data = chunk.squeeze().unsqueeze(0).cpu()
             filename = f"{self._file_prefix}_{i}.wav"
-            torchaudio.save(filename, data, 24000)
+            torchaudio.save(filename, data, 24000, format="wav", encoding="PCM_S", bits_per_sample=16)
             wav_data = wave.open(filename,"rb")
             if self._actuate_pylips:
                 self._robot.compute_and_store_visemes(filename, language='eng')
