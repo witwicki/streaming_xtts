@@ -47,9 +47,8 @@ TTS_CONFIG_PATH = f"{os.path.dirname(os.path.realpath(__file__))}/xtts/xtts_conf
 DEFAULT_SPEAKER = "Nova Hogarth"
 DEFAULT_SPEED=1.0
 DEFAULT_TEMPERATURE=0.01
-CHUNK_SIZE = 1024
-STREAM_CHUNK_SIZE=50
-OVERLAP_WAVE_LEN=2048
+STREAM_CHUNK_SIZE=32
+OVERLAP_WAVE_LEN=512
 
 
 class WrongTypeError(Exception):
@@ -131,7 +130,7 @@ class StreamingTTS():
                 from huggingface_hub import snapshot_download
                 snapshot_download("coqui/XTTS-v2", local_dir=checkpoint_path)
             else:
-                sys.exit(('You did not answer "y".  Please download the xtts_v2 model and '
+                sys.exit(('You did not answer "y".  Please download a xtts_v2 checkpoint and '
                     f'place it in {checkpoint_path}.\n'))
 
         # load TTS model
