@@ -343,7 +343,7 @@ def print_info_for_all_server_addresses(port: int):
 def serve_pylips(pylips_port):
     print(f"\nStarting pylips server (viewable at http://localhost:{pylips_port}/face)...")
     import pylips.face.start as pylips_server
-    pylips_server.main(port=pylist_port)
+    pylips_server.main(port=pylips_port)
 
 
 def main():
@@ -352,11 +352,11 @@ def main():
     parser.add_argument('-p', '--port', help="(optional argument) the port to serve on (default: 8003)", type=int, default=8003)
     parser.add_argument('--deepspeed', help="(optional flag) use deepspeed package for accelerated inference", action='store_true')
     parser.add_argument('--pylips', help="(optional flag) generate visemes, and animate robot face if Pylips server is running", action='store_true')
-    parser.add_argument('--pylipsserver', help="the address where an (opyional) Pylips server/GUI is running", default="localhost:8003")
+    parser.add_argument('--pylipsserver', help="the address where an (opyional) Pylips server/GUI is running", default="localhost:8008")
     args = parser.parse_args()
     # serve up pylips locally?
     pylips_ip, pylips_port = args.pylipsserver.split(":")
-    pylips_server_thread = threading.Thread(target=serve_pylips)
+    pylips_server_thread = threading.Thread(target=serve_pylips, args=(pylips_port,))
     if args.pylips and (pylips_ip=="localhost"):
         pylips_server_thread.start()
     # instantiate and initialize streaming TTS object
