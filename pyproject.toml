@@ -1,0 +1,41 @@
+[project]
+name = "streaming-xtts"
+version = "0.3.0"
+description = "An experiment in streaming text-to-speech"
+authors = [
+    { name = "Stefan Witwicki", email = "stefan@witwicki.info" },
+]
+readme = "README.md"
+license = "GPL-2.0-only"
+requires-python = ">=3.10,<3.12" # pylips seems to be capped at 3.11 at the moment
+dependencies = [
+    "argparse",
+    "datetime",
+    "https-server",
+    "netifaces",
+    "numpy",
+    "pyaudio",
+    "requests",
+    "torch",
+    "torchaudio",
+    "llvmlite>=0.44.0",
+    "coqui-tts",
+]
+
+[project.optional-dependencies]
+pylips = [
+    "allosaurus",
+    "pylips",
+]
+
+[tool.uv.sources]
+coqui-tts = { git = "https://github.com/idiap/coqui-ai-TTS" }
+pylips = { git = "https://github.com/witwicki/PyLips.git" }
+
+[project.scripts]
+streaming-xtts = "server.streaming_tts_server:main"
+streaming-tts-client = "client.streaming_tts_client:main"
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"

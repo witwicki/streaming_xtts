@@ -36,9 +36,10 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from functools import partial
 import netifaces as ni
 import socket
+import threading
 #from stream2sentence import generate_sentences
 import os, sys; sys.path.append(os.path.dirname(os.path.realpath(__file__)))
-from streaming_tts import StreamingTTS, WrongTypeError
+from tts.streaming_tts import StreamingTTS, WrongTypeError
 
 # Constants
 TTS_CHARACTER_LIMIT = 255 # the per-call character limit supported by XTTS2
@@ -339,17 +340,39 @@ def print_info_for_all_server_addresses(port: int):
     print(f"* http://{socket.gethostname()}:{port}")
 
 
-if __name__ == "__main__":
+def serve_pylips(pylips_port):
+    print(f"\nStarting pylips server (viewable at http://localhost:{pylips_port}/face)...")
+    import pylips.face.start as pylips_server
+    pylips_server.main(port=pylist_port)
+
+
+def main():
     # parse port
     parser = argparse.ArgumentParser(description="TTS Server.")
     parser.add_argument('-p', '--port', help="(optional argument) the port to serve on (default: 8003)", type=int, default=8003)
     parser.add_argument('--deepspeed', help="(optional flag) use deepspeed package for accelerated inference", action='store_true')
     parser.add_argument('--pylips', help="(optional flag) generate visemes, and animate robot face if Pylips server is running", action='store_true')
+    parser.add_argument('--pylipsserver', help="the address where an (opyional) Pylips server/GUI is running", default="localhost:8003")
     args = parser.parse_args()
+    # serve up pylips locally?
+    pylips_ip, pylips_port = args.pylipsserver.split(":")
+    pylips_server_thread = threading.Thread(target=serve_pylips)
+    if args.pylips and (pylips_ip=="localhost"):
+        pylips_server_thread.start()
     # instantiate and initialize streaming TTS object
-    tts_session = StreamingTTS(deepspeed_acceleration=args.deepspeed, actuate_pylips=args.pylips)
+    tts_session = StreamingTTS(
+        deepspeed_acceleration=args.deepspeed,
+        actuate_pylips=args.pylips,
+        pylips_ip=pylips_ip, pylips_port=pylips_port
+    )
     # serve
     handler = partial(MyRequestHandler, tts_session)
     httpd = HTTPServer(('0.0.0.0', args.port), handler)
     print_info_for_all_server_addresses(args.port)
     httpd.serve_forever()
+    # cleanup
+    pylips_server_thread.join()
+
+
+if __name__ == "__main__":
+    main()

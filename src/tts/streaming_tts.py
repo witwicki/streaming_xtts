@@ -35,7 +35,6 @@ import random
 import torch
 import torchaudio
 import pyaudio, wave
-import getpass
 
 from TTS.tts.configs.xtts_config import XttsConfig
 from TTS.tts.models.xtts import Xtts
@@ -44,9 +43,8 @@ import sys; sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 
 # CONSTANTS
 DATA_DIRECTORY_FOR_GENERATED_FILES = f"{os.path.dirname(os.path.realpath(__file__))}/pylips_phrases"
-TTS_CONFIG_PATH = f"{os.path.dirname(os.path.realpath(__file__))}/xtts_config.json"
-CHECKPOINT_DIRECTORY = f"/home/{getpass.getuser()}/.local/share/tts/tts_models--multilingual--multi-dataset--xtts_v2/"
-DEFAULT_SPEAKER =  "Nova Hogarth"
+TTS_CONFIG_PATH = f"{os.path.dirname(os.path.realpath(__file__))}/xtts/xtts_config.json"
+DEFAULT_SPEAKER = "Nova Hogarth"
 DEFAULT_SPEED=1.0
 DEFAULT_TEMPERATURE=0.01
 CHUNK_SIZE = 1024
@@ -108,13 +106,13 @@ class StreamingTTS():
     -------
     __init__(deepspeed_acceleration=False, actuate_pylips=False)
         initializes the streaming tts object
-    streaming_wav_generation_and_playback(text: str, playback: bool = False, language: str = "en", 
-                                            speaker: str = DEFAULT_SPEAKER, speed: str =DEFAULT_SPEED, 
+    streaming_wav_generation_and_playback(text: str, playback: bool = False, language: str = "en",
+                                            speaker: str = DEFAULT_SPEAKER, speed: str =DEFAULT_SPEED,
                                             temperature: float = DEFAULT_TEMPERATURE)
         generates the audio data for a given text, optionally plays it back, optionally actuates pylips, and saves it to disk
 
     """
-    def __init__(self, deepspeed_acceleration=False, actuate_pylips=False):
+    def __init__(self, deepspeed_acceleration=False, actuate_pylips=False, pylips_ip="localhost", pylips_port=8008):
         """Instantiate and initialize streaming tts.
 
         Parameters
@@ -124,6 +122,18 @@ class StreamingTTS():
         actuate_pylips : bool
             whether or not to generate visemes and lip-sync over Pylips (if server is running)
         """
+
+        # Download model?
+        checkpoint_path = f"{os.path.dirname(os.path.realpath(__file__))}/xtts/xtts_v2/"
+        if not os.path.exists( checkpoint_path):
+            user_response = input("...xtts_v2 model not found.  Download it from huggingface (y/n)? ")
+            if user_response == 'y':
+                from huggingface_hub import snapshot_download
+                snapshot_download("coqui/XTTS-v2", local_dir=checkpoint_path)
+            else:
+                sys.exit(('You did not answer "y".  Please download the xtts_v2 model and '
+                    f'place it in {checkpoint_path}.\n'))
+
         # load TTS model
         print("\nLoading TTS model...")
         config = XttsConfig()
@@ -143,8 +153,8 @@ class StreamingTTS():
         self._actuate_pylips = actuate_pylips
         if self._actuate_pylips:
             print("\nConnecting to robot face...")
-            import animate_pylips as face
-            self._robot = face.Robot()
+            import animation.animate_pylips as face
+            self._robot = face.Robot(pylips_ip, pylips_port)
 
     def streaming_wav_generation_and_playback(self, text: str, playback: bool = False, language: str = "en", 
                                             speaker: str = DEFAULT_SPEAKER, speed: str =DEFAULT_SPEED, 

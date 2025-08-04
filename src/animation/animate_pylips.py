@@ -32,7 +32,7 @@ Example usage:
 import sys, os
 import shutil
 import wave
-import pickle 
+import pickle
 import time
 import urllib.request
 from pylips.speech import RobotFace
@@ -40,9 +40,6 @@ from pylips.speech.system_tts import IPA2VISEME
 from pylips.face import ExpressionPresets as ep 
 from allosaurus.app import read_recognizer
 
-# constants
-PYLIPS_IP = "localhost"
-PYLIPS_PORT = "8008"
 
 def check_http_server(ip_address: str, port: int) -> bool:
     """Check for running PyLips Server
@@ -88,12 +85,12 @@ class Robot():
     lip_visemes(audio_file_key, emotion=ep.default)
         Animates lips according to visemes stored in pickle file with prefix 'audio_file_key'
     """
-    def __init__(self):
+    def __init__(self, pylips_ip="localhost", pylips_port=8008):
         # if server is not running, nullify robot
-        if not check_http_server(PYLIPS_IP, PYLIPS_PORT):
+        if not check_http_server(pylips_ip, pylips_port):
             self._robot = None
         else:
-            self._robot = RobotFace(server_ip=f'http://{PYLIPS_IP}:{PYLIPS_PORT}')
+            self._robot = RobotFace(server_ip=f'http://{pylips_ip}:{pylips_port}')
 
     def lip_sync(self, audio_file_path: str, language: str = 'eng', emotion: dict[str,float] = ep.default):
         """Lip syncs and plays back the audio file in the given language, with emotion.
